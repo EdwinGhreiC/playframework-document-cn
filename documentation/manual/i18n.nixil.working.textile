@@ -1,10 +1,14 @@
-h1. Internationalization
+h1. 国际化支持
 
 Internationalisation (I18N) is a means of adapting your application to different languages to allow for regional differences. Follow these steps to enable internationalisation in your application.
 
-h2. <a name="utf8">Only use UTF-8!</a>
+使用国际化支持(I18N)能够使你的应用根据地区的不同选择不同的语言。下面介绍如何在引用中使用国际化。
+
+h2. <a name="utf8">只允许使用UTF-8</a>
 
 Play supports only one encoding: UTF-8. Since encoding problems can be weird and difficult to deal with, we made the choice to support only one encoding. UTF-8 allows you to display all characters for all languages.
+
+Play只支持UTF-8一种字符编码.这是因为多编码会导致十分诡异难以处理的问题，所以我们决定仅支持一种。UTF-8编码涵盖了所有语言的所有字符。
 
 Be sure to be consistent with UTF-8 usage throughout your application:
 
@@ -13,58 +17,91 @@ Be sure to be consistent with UTF-8 usage throughout your application:
 * Set your HTML meta tags to UTF-8
 * If you use a database, configure it to use UTF-8, and always connect to it using UTF-8
 
-p(note). **Note**
+确认你的应用程序的每个角落都是使用UTF-8编码，也就是说：
+
+* 所有的源文件都要用UTF-8来编写
+* HTTP头中也要使用UTF-8
+* 把所有HTML页面的meta标签都设置为UTF-8
+* 如果使用了数据库的话，将数据库的字符集也设置为UTF-8, 并且数据库连接也要使用UTF-8
+
+p(note). **提示**
  
 The UTF-8 encoding issue is the reason why most of the Play configuration files, even though they are Java properties files, are not named @*.properties@. Java imposes the requirement that properties files must be encoded with the **ISO-8859-1** encoding. Play configuration files must be UTF-8 encoded. Need we say more?
 
-h2. <a name="messages">Externalize your messages</a>
+因为想要一致使用UTF-8编码，所以Play的大多数配置文件都没有被命名为xxx.properties，虽然事实上他们就是properties文件。Java强迫规定了properties文件必须使用**ISO-8859-1**编码，而Play喜欢UTF-8，懂啦？
+
+h2. <a name="messages">抽取你的Message</a>
 
 To support I18N you have to externalize all messages in your application. 
 
 Create a file named @messages@ in the application’s @conf/@ directory. This file is really just a Java properties file.
+
+支持I18N的第一步是将所有的message(也就是你想要国际化的信息)都提取到外部文件中。
+
+在应用的conf目录下创建一个名为messages的文件，它其实就是一个Java properties文件的格式。
 
 bc. hello=Hello!
 back=Back
 
 Then you can define a specific @message@ file for each language used in your application. Just add the ISO language code as a file extension. 
 
+然后，你就可以为每种语言创建一个对应的message文件，其扩展名为ISO标准的语言代码
+
 For example, the message file containing the corresponding French translations is @conf/messages.fr@:
 
-bc. hello=Bonjour!
-back=Retour
+例如，包含了中文翻译信息的文件应该被命名为conf/messages.zh，其中的内容可能是
 
-h2. <a name="languages">Define languages supported by the application</a>
+bc. hello=你好！
+back=回退
+
+h2. <a name="languages">定义程序支持的语言类型</a>
 
 Define a list of supported languages in the "application.langs configuration":configuration#application.langs.
 
+在application.conf文件中加入要支持的语言种类。例如application.langs=fr,en,ja
+
 On the first request from a new user, Play will guess the default language to use. It does so by parsing the HTTP @Accept-language@ header. It will then save the chosen language in a @PLAY_LANG@ cookie. So the next request will use the same language.
+
+当用户第一次向发来http请求时，Play会通过解析http头中Accept-language的值来猜测用户的想要的语言来作为默认语言。
 
 You can use language/country pair if you want to distinguish between variant, such as en_US and en_GB, or zh_CN and zh_TW. However, be aware that some users may only expose a language and not a country in their Accept-language. For that reason, you should always provide the "naked" language (e.g. en).
 
+如果有需要的话，可以通过en_US，en_GB或zh_CN,zh_TW这样的扩展名来区别支持同一语言的不同变种。然而值得注意的是某些用户可能只会提供语言信息而不提供所在国家的信息，因此，你总是应该提供一个扩展名中不包含国家代码的文件。
+
 For example, if most of your users are from US but you also want to support British English, it is recommended to use simply "en" of US English and "en_GB" for British English.
 
+例如，如果你大部分的用户是来自美国，而你想要支持英式英语，推荐的做法是使用messages.en来支持默认的美式英语，而使用en_GB来支持英式英语。
+
 From your application code your can retrieve the current language for the user by accessing the @play.i18n.Lang@ object:
+
+在你的程序代码中，你可以通过访问play.i18n.Lang对象来获取当前使用的语言
 
 bc. String lang = Lang.get();
 
 If you want to permanently change the user language, use the change() method:
+如果想要永久性的改变用户的语言，可以使用change()方法：
 
 bc. Lang.change("ja");
 
 The new value will be saved back to the user’s language cookie.
+新的language值将会保存在用户的cookie中
 
-
-h2. <a name="dates">Define date format according to your locale</a>
+h2. <a name="dates">根据locale设置日期格式</a>
 
 Configure "date.format":configuration#date.format to specify the default date format to use.
+在配置文件中设置"date.format"值来指定默认的日期格式
+
+对于特定地区，可以通过设置date.format.{locale}来指定针对该地区的日期格式，如
+date.format.fr=dd/MM/yyyy
+
+h2(#retrieve). <a>获取本地化消息</a>
 
 
-h2(#retrieve). <a>Retrieve localized messages</a>
-
-
-h3(#argument). Message arguments
+h3(#argument). 消息参数
 
 From the application code, you can retrieve messages defined in message files. From Java, use the @play.i18n.Messages@ object.
+
+你可以在程序代码中使用@play.i18n.Messages@对象中来获取定义在message文件中的消息。
 
 bc. public static void hello() {
     renderText(Messages.get("hello"));
@@ -72,63 +109,79 @@ bc. public static void hello() {
 
 We support message formatting through the standard @java.util.Formatter@ ‘Format string syntax’. You can also define dynamic content in your messages:
 
+我们支持使用标准的@java.util.Formatter@的‘字符串格式化语法’，你可以在messages中定义需要动态替换的内容
+
 bc. hello=Hello %s!
 
 where @%s@ represents a message argument that will be output as a @String@. Message arguments are provided by additional (varargs) arguments to @Messages.get@:
+
+这里@%s%代表一个字符串类型的消息参数，他将会用来替换%s。消息参数作为@Message.get@方法的第二个参数来获取
 
 bc. public static void hello(String user) {
     renderText(Messages.get("hello", user));
 }
 
-h3(#template). Template output
+h3(#template). 在模板中输出消息参数
 
 From a template you can use the special @&{…}@ syntax to display localized messages:
+在模板中你可以使用特殊的@&{...}@语法来显示本地化消息
 
 bc. <h1>&{'hello'}</h1>
 
 or using dynamic content in message arguments:
+或者像这样使用有动态替换的消息参数
 
 bc. <h1>&{'hello', params.user}</h1>
 
 
-h3(#arguments). Multiple arguments
+h3(#arguments). 多个参数
 
 You can define multiple message arguments, such as this message which refers to two ‘decimal integer’ arguments:
+你可以在一条消息中定义多个参赛，例如这个消息
 
 bc. guess=Please pick a number between %d and %d
+bc. guess=请输入一个介于%d和%d中间的数字
 
 which you display by specifying the message arguments in the right order:
-
+在模板中如下按顺序加入参数即可。
 bc. <p>&{'guess', low, high}</p>
 
 
-h3(#indices). Argument indices
+h3(#indices). 参数索引
 
 You can also specify the message argument explicitly, to use a different order. For example, suppose a message in English has two parameters:
+消息参数的索引默认与其顺序相同，你也可以显示的指定索引，从而指定参数顺序。例如下面这个英文message的定义中有两个参数：
 
 bc. guess.characteristic=Guess %s’s %s.
 
 with message output like:
+模板中像这样使用：
 
 bc. <p>&{'guess.characteristic', person.name, 'age'}</p>
 
 The French localisation has the two message in the opposite order, so in the French localisation we specify the argument indices:
 
+而对应的法语翻译文件中，这两个参数的位置却是相反的，所以这时候我们需要显示的为法语本地化消息的参数指定顺序。
+
 bc. guess.characteristic=Devinez %2$s de %1$s.
 
 where @%2$s@ outputs the **second** argument as a decimal integer.
+这里我们使用了@%2$s@来输出**第二个**十进制整形参数
 
 Finally, we want to localise the characteristic name ‘age’ as well, so we would change the output to use the message key @person.age@, and change the message definitions to:
+最后，我们想要为这个本地化文件加入一个特有的"age"，于是我们修改一下输出，来使用消息的key@person.age@，将这个message在英语和法语中的定义修改为:
 
 bc. guess.characteristic=Guess %s’s &{%s}.
 person.age = age
 
-and
+和
 
 bc. guess.characteristic=Devinez &{%2$s} de %1$s.
 person.age = l’age
 
 where @&{%s}@ is itself a message look-up, with the argument value as the message key.
+
+这里的@&{%s}@是使用参数值来作为消息的key，在消息文件中进行查找。
 
 p(note). **Continuing the discussion**
  
