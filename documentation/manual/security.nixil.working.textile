@@ -1,65 +1,44 @@
-h1. 安全性导引
-
-The Play framework is designed with security in mind - but it is impossible to prevent developers using the framework to mess up and open holes. The guide describes the common security issues in web applications and how to avoid them in Play applications.
+h1. 安全指导
 
 虽然Play在设计之初就考虑了安全性问题，但是任何人都无法阻止程序员们自毁长城。以下的向导将会涉及web应用常见的安全性问题，以及在Play中该如何避免。
 
 h2. <a name="sessions">Sessions</a>
 
-Often you need to keep information associated with a user, in particular the logged-in status. Without a session, the user would need to pass credentials with each request.
-
 你经常会需要保存一些跟用户有关的信息，比如登录状态之类的。如果没有session，用户就得在每个请求当中都携带认证信息。
 
-That’s what sessions are for: a set of cookies stored in the user’s browser that identify him or her to the web site, and provide other information your web application may choose to store there rather than in the data layer; for example the language.
+所谓session就是一组储存在用户浏览器的cookie中的数据，用于标识用户，有时候还会根据应用的需要存储一些额外信息，比如用户的语言之类的。
 
-所谓session就是一组储存在用户浏览器的cookie中的数据，用于标识用户，很多时候还会根据应用的需要存储一些额外信息，比如用户的语言。
+h3. 安全第一要素 - 别把秘密公开
 
-h3. 保密- 别把秘密公开
+session是一组键/值的哈希，它带有数字签名但是并未加密。这意味着，如果你的签名是安全的，任何第三方都无法伪造session。
 
-The session is a hash of key/values, signed but not encrypted. That means that as long as your secret is safe, it is not possible for a third-party to forge sessions.
-
-session是一组键/值的哈希，经过数字签名但是并未加密。这意味着，只要你的签名是安全的，任何第三方都无法伪造session。
-
-The secret is stored in @conf/application.conf@. It is very important to keep it private: do not commit it in a public repository, and when you install an application written by someone else change the secret key to your own. You can do that with the command @play secret@.
-
-这个数字签名保存在@conf/application.conf@中. 一定要保证机密的私有性，绝对不要把它提交到公有代码库中。当你安装了一个有其他人构建的应用时，记得一定要修改原来的数字签名, 用这个命令@play secret@。		
+这个数字签名保存在@conf/application.conf@中. 一定要保证机密(数字签名)的私有性，绝对不要把它提交到公有代码库中。当你安装了一个由其他人构建的应用时，记得一定要用这个命令@play secret@，来修改原来的数字签名,。		
 
 h3. 不在session中储存关键数据
 
-However, since it is not encrypted, you should not store critical data in the session. It can be seen by looking at the user cookie, by sniffing the connection on a local network or over wifi.
-
-尽管如上面所述，由于cookie是未加密的，你还是不应在session当中存储关键性数据。否则可能被通过查看cookie，或者检测局域网/wifi的方式暴露。
-
-The session is stored in a cookie, and cookies are limited to 4 KB. In addition to this limit, only strings can be stored.
+尽管有数字签名，但由于cookie是未加密的，你还是不应在session当中存储关键性数据。否则可能被通过查看cookie，或者在局域网/wifi的网关截获http请求等方式暴露。
 
 Play的session是存储在cookie中的，而cookie的大小被浏览器限制为4KB. 除了空间限制外, cookie中还仅能保存文本值。
 
 h2. <a name="xss">跨站脚本攻击</a>
 
-Cross-site scripting is one of the most common vulnerabilities in web applications. It consists of injecting malicious JavaScript into web pages using forms that your application provides.
-
-跨站脚本攻击是web应用最大的弱点之一。实施方式使用应用提供的表单，注入恶意JavaScript脚本.
+跨站脚本攻击是web应用最大的弱点之一。其原理是在使用web应用的表单提交信息时，注入恶意JavaScript脚本. (这就好像送快递的往你家的邮箱里塞一个夹带了窃听器的包裹)
 
 Let’s say you’re writing a blog, and anyone can add a comment. If you blindly include what commenters have written into your HTML page, you’re opening your site to attacks. It can be:
 * Show a popup to your visitors
 * Redirect your visitors to a site controlled by the attacker
 * Steal information supposed to be visible only to the current user, and send it back to the attacker’s site
 
-假设你在写blog，而任何其它人都可以添加评论，如果你闭上眼睛任凭评论者将任何内容提交到你的HTML页面中，你的站点就会被攻击。可能会导致:
+假设你有一个写博客的程序，而任何其它人都可以对博文添加评论，而评论最终会被显示在该。如果你允许评论者们将任何评论信息(比如一段html代码，其中可能还夹杂了javascript)内容提交到你的页面中，你的站点就会被攻击。可能会导致:
 
 * 你的blog的访客将会收到一个弹出窗，这可能只是恶搞一下
 * 你的blog的访客会被重定向到一个在攻击者控制之下的站点
 * 窃取到本应只有当前用户才能看到的信息，并将其发送到攻击者的站点。
 
-
-Consequently it is very important to be protected from those attacks.
 因此避开这些攻击是至关重要的
-
-Play’s template engine automatically escapes strings. If you really need to insert unescaped HTML in your templates, you can do so using the "raw()":javaextensions#raw Java extension on the string. But if the string comes from a user input, you need to make sure it is sanitized first.
 
 Play的模板引擎会自动的将文本转义。如果你确实需要在模板中插入未转义的HTML，可以使用"raw()":javaextensions#raw 这个java扩展方法。但是如果文本是来自用户的输入，那你就要谨慎为之，确保先对这些输入进行"消毒"。
 
-When sanitizing user inputs, always prefer whitelisting (only allow a list of safe tags) to blacklisting (forbid a list of unsafe tags and allow all the rest).
 审查用户输入的时候，使用"白名单(只允许某些安全标签)"比使用"黑名单(禁止某些不安全标签而允许其他标签)"来的安全。
 
 
@@ -67,46 +46,32 @@ When sanitizing user inputs, always prefer whitelisting (only allow a list of sa
 
 h2. <a name="sql">SQL 注入</a>
 
-SQL injection is an exploit consisting in using user input to execute a SQL query that was not intended by the developer. This can be used to destroy data, or to get access to data that shouldn’t be visible to the current user.
-
 SQL注入是一种利用用户的输入来执行SQL脚本的攻击方式。这种攻击可能摧毁你的数据，也可能使你的数据暴露给攻击者。
 
 !http://imgs.xkcd.com/comics/exploits_of_a_mom.png!
 
-When you are using high level "find" methods, you should be covered against SQL injection. When you build your own queries manually, you need to be careful not to concatenate strings with @+@ but use @?@ placeholders.
+如果你使用高级的"find"方法，你必须考虑到对付SQL注入的问题。当你手工创建查询语句时，一定要小心不要使用字符串拼接(@+@)的方式传入参数，而应该使用@?@作为占位符然后替换。
 
-如果你使用高级的"find"方法，你应该考虑到对付SQL注入的问题。当你手工创建查询语句时，一定要小心不要使用字符串拼接(@+@)的方式传入参数，而应该使用@?@作为占位符然后替换。
-
-This is good:
 这种是安全的：
 
 bc. createQuery("SELECT * from Stuff WHERE type= ?1").setParameter(1, theType);
 
-This is NOT:
 而这一种则是危险的：
 
 bc. createQuery("SELECT * from Stuff WHERE type=" + theType;
 
 h2. <a name="csrf">CSRF-跨站请求伪造</a>
 
-The CSRF attack can be really problematic in web applications:
+CSRF-跨站请求伪造(又有戏称session-riding)也是web应用的一个大问题:
 
-bq. This attack method works by including malicious code or a link in a page that accesses a web application that the user is believed to have authenticated. If the session for that web application has not timed out, an attacker may execute unauthorized commands.
+bq. 这种攻击方法的前提是用户(在当前或者最近一段时间)登录了你的应用，浏览器中还保留着的cookie。此时如果在该用户访问的某个页面(可能是任何一个其他的网站)中引入一段恶意的代码或者链接，使之向你的应用发起请求。那由于这个用户的session还没有过期，该请求就会利用这个伪造的session来通过应用的认证，执行恶意的操作了。
 
-bq. 这种攻击方法是通过在已授权用户的页面引入中一段恶意代码或者链接。如果当前这个用户的session还没有过期，那么攻击者就可以执行未经授权的命令了。
+要防止这种攻击，首先要正确的使用GET和POST方法. 也就是说，POST方法应该仅用于更改应用的状态. (而相应的GET方法不应该用于更改应用状态，这里也就是所谓的GET方法应该具有等幂性，这样一来攻击者就无法通过恶意的链接来执行恶意操作)。
 
-To prevent this attack, the first thing to do is to use GET and POST methods appropriately. That means that only the POST method should be used to change the application’s state.
-要防止这种攻击，首先要正确的使用GET和POST方法. 也就是说，POST方法应该用于更改应用的状态.
+而对于接受POST请求的controller来说，保证每次收到的请求都是安全的方法之一，就是要求每个请求都提供一个认证口令(这个口令不是存放在cookie中而是作为随表单一起提交的一个隐藏字段)。Play提供了一些内置的帮助类和方法来处理这些事情。
 
-For POST requests the only way to secure critical actions properly is to issue an authenticity token. Play now has a built-in helper to handle that:
-对于POST请求来说，唯一能对关键操作进行安全保护的方法就是使用一个认证口令. Play有一个内置的帮助类来处理这个事情。
-
-* a @checkAuthenticity()@ method available in controllers, that checks for a valid authenticity token in the request parameters and sends a forbidden response if something is bad.
-* @session.getAuthenticityToken()@ generates an authenticity token only valid for the current session.
-* @#{authenticityToken /}@ creates a hidden input field that you can add to any form.
-
-* controller中有一个@checkAuthenticity()@的方法，将会检查请求参数中的口令的合法性，如果发现任何问题就会返回一个403forbidden的响应。
-* @session.getAuthenticityToken()@ 方法会生产一个仅对当前session有效的口令
+* controller中有一个@checkAuthenticity()@方法，它会检查包含在请求参数中的口令的合法性，如果发现不对就会返回一个forbidden(403)的响应。
+* @session.getAuthenticityToken()@ 方法会生成一个仅对当前session有效的口令
 * 在html模板的form中使用 @#{authenticityToken /}@  会生成一个包含口令的隐藏域
 
 So for example:
@@ -117,7 +82,6 @@ bc. public static destroyMyAccount() {
     …
 }
 
-Will only work when called from a form including a proper authenticity token:
 checkAuthenticity()会进行检查，只有提交的表单中包含正确的认证口令(模板中要加入如下面的代码)时才会执行
 
 bc. <form method="post" action="/account/destroy">
@@ -125,14 +89,11 @@ bc. <form method="post" action="/account/destroy">
     <input type="submit" value="destroy my account">
 </form>
 
-For POST requests, Play’s "form tag":tags#form automatically generates the authenticity token:
-Play的"表单标签": tags:#form 当其要提交到的action是接受POST时会自动生成一个认证口令
+Play的"表单标签": tags:#form 当其要提交到的action接受POST方法时会自动生成一个认证口令
 
 bc. #{form @destroyMyAccount()}
     <input type="submit" value="destroy my account">
 #{/form}
-
-You can of course add the @checkAuthenticity()@ method call as a "before filter":controllers#before if you want to protect all actions of a hierarchy of controllers.
 
 当然如果你想把对所有controller的访问都保护起来的话，你可以在增加一个controller的"before filter": controllers#before，把@checkAuthenticity()@方法加在里面
 
