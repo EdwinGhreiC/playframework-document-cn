@@ -1,0 +1,151 @@
+h1. Play!中使用HTTP异步编程
+
+这一章主要讲解如何运用异步模式实现典型的长连接（long-polling）、流（streaming）和“推送方式（Comet-style:http://en.wikipedia.org/wiki/Comet_(programming%29）”的编程，以便于响应数以千万计的并发请求。
+
+h2. 延缓（Suspending） HTTP 请求
+
+Play主要是用于处理很短的请求。它使用一个固定的线程池来处理用户的HTTP请求。为获得最佳效果，这个线程池当然是越小越好。我们一般用@处理器数+1@这个比较恰当的值来作为默认的池大小。
+
+这也就意味着如果一个请求持续很长时间（比如等待一个长时间的计算）它就会阻塞线程池并且降低服务的响应能力。当然你也可以给池中增加更多的线程，但是那会浪费很多的资源而且池的大小总不可能是无限的。
+
+设想一个聊天服务，当各个浏览器终端发出请求等待显示新的消息。这些请求一般都会很长（通常都要好几秒钟）这必然会阻塞线程池。如果你打算同时支持100个人聊天，那你就要准备至少100个线程。好吧这不算什么，但是如果是1000个呢？10000个呢？
+
+为了解决这类总是，Play允许你临时延缓（suspend）一个请求。这个HTTP请求将保持连接，但会被推出线程池稍后再试。你可以告诉Play在适当的延迟后或得到一个@Promise@的返回值后再次处理这个请求。
+
+p(note). **Tip**. 你可以看一个实例：@samples-and-tests/chat@.
+
+例如，这个action会处理一个很长时间的job并且等到完成后再返回结果到HTTP response：
+
+bc. public static void generatePDF(Long reportId) {
+    Promise<InputStream> pdf = new ReportAsPDFJob(report).now();
+    InputStream pdfStream = await(pdf);
+    renderBinary(pdfStream);
+}
+
+这里我们使用了@await(…)@来让Play延缓处理这个请求，直到返回@Promise<InputStream>@的结果。
+
+h3. Continuations
+
+为了重新获得之前响应其他请求的线程，框架必须暂停执行你的代码。在Play之前的版本使用的是@waitFor(…)@，也就是现在所说的@await(…)@，用它来延缓你的action，稍后再回来执行。
+
+为了更方便地处理异步的代码，我们来介绍一下continuations。Continuations可能让你的代码很自然地暂停后再重新开始。于是你可以象下命令一样来写你的代码，如下：
+
+bc. public static void computeSomething() {
+    Promise<String> delayedResult = veryLongComputation(…);
+    String result = await(delayedResult);
+    render(result);
+}
+
+实际上在这儿，你的代码会被分为两步，在两个不同的线程中来执行。但正如你所看到的，在你的代码中是感觉不到的。
+
+你可以使用 @await(…)@ 和 continuations 来写一个循环：
+
+bc. public static void loopWithoutBlocking() {
+    for(int i=0; i<=10; i++) { 
+         Logger.info(i);
+         await("1s");
+    }
+    renderText("Loop finished");
+}
+
+即使是在开发模式，默认只有一个线程来处理请求，Play也可以在同一时间并行地运行这些循环。
+
+h2. HTTP 输出流
+
+现在你可以运行这类循环而不必担心阻塞线程，同时你肯定还想每当取得一部分有效的结果时就把结果发到浏览器客户端。这就是@Content-Type:Chunked@这个HTTP输出类型的作用。它可以使你用多个chunks来分批发送HTTP结果。浏览器则会马上显示出收到的结果。
+
+使用 @await(…)@ 和 continuations, 你现在就可以实现它了：
+
+bc. public static void generateLargeCSV() {
+    CSVGenerator generator = new CSVGenerator();
+    response.contentType = "text/csv";
+    while(generator.hasMoreData()) {
+          String someCsvData = await(generator.nextDataChunk());
+          response.writeChunk(someCsvData);
+    }
+}
+
+即使这个CSV的生成要耗费一个小时，Play也可以用一个线程同时处理多次请求，并且每当有最新的结果时就返回给客户端。
+
+h2. 使用 WebSockets
+
+WebSockets是一个连接浏览器和应用服务的双向通信通道。在浏览器一边，你可以用“ws://”打开一个socket通道：
+
+bc. new Socket("ws://localhost:9000/helloSocket?name=Guillaume")
+
+而在Play这边，你可以声明一个WS的route：
+
+bc. WS   /helloSocket            MyWebSocket.hello
+
+@MyWebSocket@ 是一个 @WebSocketController@。 一个 WebSocket 的 controller 和一个标准的 HTTP controller 类似，但也有一些不同的概念：
+
+* 它有一个请求 request 对象，但却没有 response 返回对象。
+* 它可以访问 session，但是只读的。
+* 它没有 @renderArgs@, @routeArgs@ 或 flash scope 。
+* 它只能从 route 路径或 QueryyString 路径字串中读取参数。
+* 它有两个通信通道： inbound 输入 和 outbound 输出。
+
+当客户端连接 @ws://localhost:9000/helloSocket@ socket 通道，Play 就会运行 @MyWebSocket.hello@ action 方法。一旦 @MyWebSocket.hello@ action 方法退出，这个 socket 通道就关闭了。
+
+下面是一个非常简单的socket例子：
+
+bc. public class MyWebSocket extends WebSocketController {
+    public static void hello(String name) {
+        outbound.send("Hello %s!", name);
+    }
+}
+
+在这个例子中，客户端连接socket，收到“Hello Guillaume”的消息，然后这个 socket 就关闭了。
+
+当然了通常你并不想马上关闭这个 socket。而使用 @await(…)@ 可以很容易地保持连接。
+
+如下是一个非常简单的 Echo 响应服务：
+
+bc. public class MyWebSocket extends WebSocketController {
+    public static void echo() {
+        while(inbound.isOpen()) {
+             WebSocketEvent e = await(inbound.nextEvent());
+             if(e instanceof WebSocketFrame) {
+                  WebSocketFrame frame = (WebSocketFrame)e;
+                  if(!e.isBinary) {
+                      if(frame.textData.equals("quit")) {
+                          outbound.send("Bye!");
+                          disconnect();
+                      } else {
+                          outbound.send("Echo: %s", frame.textData);
+                      }
+                  }
+             }
+             if(e instanceof WebSocketClose) {
+                 Logger.info("Socket closed!");
+             }
+        }
+    }
+ 
+}
+
+在上面的例子中，多层嵌套的“if“ 和 ”cast“ 写起来很烦而且极易出错。在这儿就体现出Java的糟糕之处。即使象这样一个简单的示例都这么难处理，如果碰到更复杂的情况，比如你要组合多个数据流，并且有更多的事件类型，那将会是一场恶梦。
+
+因此我们要介绍一个Java的简单匹配模式，是在 "play.libs.F":libs#FunctionalprogrammingwithJava 这个函数式编程的库中。
+
+那么之前的Echo的例子就可以重写为下面这样：
+
+bc. public static void echo() {
+    while(inbound.isOpen()) {
+         WebSocketEvent e = await(inbound.nextEvent());
+         for(String quit: TextFrame.and(Equals("quit")).match(e)) {
+             outbound.send("Bye!");
+             disconnect();
+         }
+         for(String msg: TextFrame.match(e)) {
+             outbound.send("Echo: %s", frame.textData);
+         }
+         for(WebSocketClose closed: SocketClosed.match(e)) {
+             Logger.info("Socket closed!");
+         }
+    }
+}
+
+p(note). **继续这个话题**
+ 
+接下来, 实现 %(next)"Ajax 请求":ajax%.
